@@ -38,7 +38,7 @@ This document contains a specification for the Harberger MFT architecture. This 
 allows modification of the value for any given NFT, callable only by token owner.
 
 1. check status of NFT in `defaultedNFTs` array
-2. if not defaulted, calls `evaluateAndAddress()` and returns the tax due (or confiscates the NFT to the treasury)
+2. if not defaulted, calls `returnTaxDue()` and returns the tax due (or confiscates the NFT to the treasury)
 3. charges the tax due to the owner based on the old price, requiring success in transfer
 4. updates the price in the mapping
 
@@ -55,7 +55,7 @@ allows any NFT to be purchased by any address at the mapped price, callable by a
 5. transfers the NFT from the owner to the buyer via `transferFrom`
 6. updates the timestamp in the mapping
 
-- `evaluateAndAddress(params) public payable`
+- `evaluateAndAddress(params) public payable` **THIS IS OUR FROECLOSURE PATH**
 
 1. takes in a tokenId
 2. analyses time delta between current block timestamp and the timestamp of minting/modifying

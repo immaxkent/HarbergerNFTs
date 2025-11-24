@@ -19,7 +19,7 @@ A Harberger NFT is a token that is subject to a tax rate levied proportionally t
 
 ## Foreclosure
 
-- We put an evaluative cliff in place modifyable via setters, for the payment of taxes and ensure we have covered twice block time past that cliff to check for tax payments/modifications. If unpaid, the asset is confiscated and 'sold' (transferred) to the treasury via a dedicated call, the function `evaluateAndAddress()`.
+- We put an evaluative cliff in place for the payment of taxes. Payments ensure we have covered twice block time past that cliff to allow space for tax payments/modifications. If unpaid, the asset is confiscated and 'sold' (transferred) to the treasury via a dedicated call, the function `evaluateAndAddress()`.
 
 ## Footnotes & Running Thoughts wrt Original Spec
 
