@@ -7,10 +7,10 @@ import {HarbergerNFTs} from "../src/HarbergerNFTs.sol";
 contract HarbergerNFTsTest is Test {
     HarbergerNFTs public nft;
 
-    address public treasurer = address(0xea);
-    address public owner = address(0x10);
-    address public buyer = address(0xbe);
-    address public nonOwner = address(0x1e);
+    address public treasurer;
+    address public owner;
+    address public buyer;
+    address public nonOwner;
 
     uint256 public constant MAX_PRICE = 1e18;
     uint256 public constant MIN_PRICE = 0.001 ether;
@@ -27,6 +27,11 @@ contract HarbergerNFTsTest is Test {
     event TaxPaid(uint256 indexed tokenId, address indexed payer, uint256 amount);
 
     function setUp() public {
+        treasurer = makeAddr("treasurer");
+        owner = makeAddr("owner");
+        buyer = makeAddr("buyer");
+        nonOwner = makeAddr("nonOwner");
+
         nft = new HarbergerNFTs(treasurer, MAX_PRICE, MIN_PRICE, TAX_RATE, CLIFF, "Harberger NFT", "HARB");
         vm.deal(owner, 100 ether);
         vm.deal(buyer, 100 ether);
