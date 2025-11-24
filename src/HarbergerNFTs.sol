@@ -92,7 +92,7 @@ contract HarbergerNFTs is ERC721, ReentrancyGuard {
         uint256 taxDue = returnTaxDue(tokenId);
         nftPrices[tokenId] = newPrice;
         nftTimestamps[tokenId] = uint64(block.timestamp);
-        
+
         if (taxDue > 0) {
             (bool success,) = payable(treasurer).call{value: taxDue}("");
             require(success, "Tax payment failed");

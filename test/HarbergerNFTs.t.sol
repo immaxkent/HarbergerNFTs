@@ -269,8 +269,8 @@ contract HarbergerNFTsTest is Test {
         assertEq(buyer.balance, buyerBalanceBefore - totalRequired);
         assertEq(owner.balance, ownerBalanceBefore + INITIAL_PRICE);
         assertEq(address(treasurer).balance, treasuryBalanceBefore + taxDue);
-        assertEq(nft.returnTaxDue(TOKEN_ID), 0); 
-        assertFalse(nft.isDefaulted(TOKEN_ID)); 
+        assertEq(nft.returnTaxDue(TOKEN_ID), 0);
+        assertFalse(nft.isDefaulted(TOKEN_ID));
     }
 
     ////////////////////////////// returnTaxDue()
@@ -415,7 +415,7 @@ contract HarbergerNFTsTest is Test {
 
         uint256 taxDue = nft.returnTaxDue(TOKEN_ID);
 
-        // == 10% * 10 years = 100% 
+        // == 10% * 10 years = 100%
         uint256 expectedTax = INITIAL_PRICE;
         assertEq(taxDue, expectedTax);
     }
@@ -425,7 +425,7 @@ contract HarbergerNFTsTest is Test {
             treasurer,
             MAX_PRICE,
             MIN_PRICE,
-            10_000, // 100% 
+            10_000, // 100%
             CLIFF,
             "Harberger NFT",
             "HARB"
