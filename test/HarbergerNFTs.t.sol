@@ -8,7 +8,7 @@ contract HarbergerNFTsTest is Test {
     HarbergerNFTs public nft;
 
     address public treasurer = address(0xea);
-    address public owner = address(0xe);
+    address public owner = address(0x10);
     address public buyer = address(0xbe);
     address public nonOwner = address(0x1e);
 
