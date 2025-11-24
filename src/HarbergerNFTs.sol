@@ -2,9 +2,9 @@
 pragma solidity ^0.8.13;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract HarbergerNFTs is ERC721 {
-
+contract HarbergerNFTs is ERC721, ReentrancyGuard {
     address public treasurer;
     uint256 public MAX_PRICE; // set in constructor
     uint256 public MIN_PRICE; // set in constructor
@@ -19,6 +19,7 @@ contract HarbergerNFTs is ERC721 {
     uint256 private constant SECONDS_PER_YEAR = 365 days;
     uint256 private constant BASIS_POINTS = 10_000;
     uint256 private constant BLOCK_TIME_MARGIN = 25; // 24 + 1 seconds for 2 blocks
+    uint256 private constant SCALING_FACTOR = 1e18; // Used to prevent rounding errors in tax calculations
 
     event NewCliffSet(uint256 indexed newCliff);
     event NFTMinted(uint256 indexed tokenId, address indexed owner, uint256 price);
@@ -41,7 +42,7 @@ contract HarbergerNFTs is ERC721 {
     modifier blockTimeMargin(uint256 tokenId) {
         uint64 lastTimestamp = nftTimestamps[tokenId];
         if (lastTimestamp == 0) {
-            revert InvalidPrice(); 
+            revert InvalidPrice();
         }
         if (block.timestamp < lastTimestamp + BLOCK_TIME_MARGIN) {
             revert BlockTimeMarginNotMet();
@@ -83,64 +84,59 @@ contract HarbergerNFTs is ERC721 {
         emit NFTMinted(tokenId, to, value);
     }
 
-
-    function modify(uint256 tokenId, uint256 newPrice) external payable blockTimeMargin(tokenId) {
+    function modify(uint256 tokenId, uint256 newPrice) external payable nonReentrant blockTimeMargin(tokenId) {
         if (ownerOf(tokenId) != msg.sender) revert NotOwner();
         if (defaultedNFTs[tokenId]) revert TokenDefaulted();
         if (newPrice == 0 || newPrice < MIN_PRICE || newPrice > MAX_PRICE) revert InvalidPrice();
 
-        // evaluates tax status and handle defaults
-        bool defaulted = evaluateAndAddress(tokenId);
-        if (defaulted) revert TokenDefaulted();
-
         uint256 taxDue = returnTaxDue(tokenId);
+        
+        // CEI: Update state first
+        nftPrices[tokenId] = newPrice;
+        nftTimestamps[tokenId] = uint64(block.timestamp);
+        
+        // Then make external calls
         if (taxDue > 0) {
-            (bool success, ) = payable(treasurer).call{value: taxDue}("");
+            (bool success,) = payable(treasurer).call{value: taxDue}("");
             require(success, "Tax payment failed");
             emit TaxPaid(tokenId, msg.sender, taxDue);
         }
 
-        // Update price and timestamp
-        nftPrices[tokenId] = newPrice;
-        nftTimestamps[tokenId] = uint64(block.timestamp);
-
         emit NFTModified(tokenId, msg.sender, newPrice);
     }
 
-    function purchase(uint256 tokenId) external payable blockTimeMargin(tokenId) {
+    function purchase(uint256 tokenId) external payable nonReentrant blockTimeMargin(tokenId) {
         if (defaultedNFTs[tokenId]) revert TokenDefaulted();
 
         address currentOwner = ownerOf(tokenId);
-        if (currentOwner == address(0)) revert ZeroAddress(); 
+        if (currentOwner == address(0)) revert ZeroAddress();
 
         uint256 price = nftPrices[tokenId];
         uint256 taxDue = returnTaxDue(tokenId);
         uint256 totalRequired = price + taxDue;
 
         if (msg.value < totalRequired) revert InsufficientPayment();
+        // CEI
+        _transfer(currentOwner, msg.sender, tokenId);
+        nftTimestamps[tokenId] = uint64(block.timestamp);
         // pay price to owner
-        (bool success1, ) = payable(currentOwner).call{value: price}("");
+        (bool success1,) = payable(currentOwner).call{value: price}("");
         require(success1, "Payment to owner failed");
         // pay tax to treasury
         if (taxDue > 0) {
-            (bool success2, ) = payable(treasurer).call{value: taxDue}("");
+            (bool success2,) = payable(treasurer).call{value: taxDue}("");
             require(success2, "Tax payment failed");
             emit TaxPaid(tokenId, msg.sender, taxDue);
         }
         // refund excess
         if (msg.value > totalRequired) {
-            (bool success3, ) = payable(msg.sender).call{value: msg.value - totalRequired}("");
+            (bool success3,) = payable(msg.sender).call{value: msg.value - totalRequired}("");
             require(success3, "Refund failed");
         }
-
-        _transfer(currentOwner, msg.sender, tokenId);
-
-        nftTimestamps[tokenId] = uint64(block.timestamp);
-
         emit NFTPurchased(tokenId, currentOwner, msg.sender, price);
     }
 
-    function evaluateAndAddress(uint256 tokenId) public returns (bool) {
+    function evaluateAndAddress(uint256 tokenId) public nonReentrant returns (bool) {
         if (defaultedNFTs[tokenId]) return true;
 
         uint64 lastTimestamp = nftTimestamps[tokenId];
@@ -154,7 +150,7 @@ contract HarbergerNFTs is ERC721 {
             address currentOwner = ownerOf(tokenId);
             _transfer(currentOwner, treasurer, tokenId);
             defaultedNFTs[tokenId] = true;
-            emit NFTDefaulted(tokenId, currentOwner); 
+            emit NFTDefaulted(tokenId, currentOwner);
             return true;
         }
         return false;
@@ -164,31 +160,32 @@ contract HarbergerNFTs is ERC721 {
         if (defaultedNFTs[tokenId]) return 0;
 
         uint64 lastTimestamp = nftTimestamps[tokenId];
-        if (lastTimestamp == 0) return 0; 
+        if (lastTimestamp == 0) return 0;
 
         uint256 price = nftPrices[tokenId];
         uint256 timeElapsed = block.timestamp - lastTimestamp;
-        taxDue = (price * GLOBAL_TAX_RATE * timeElapsed) / (SECONDS_PER_YEAR * BASIS_POINTS);
+        taxDue = (price * GLOBAL_TAX_RATE * timeElapsed * SCALING_FACTOR) / (SECONDS_PER_YEAR * BASIS_POINTS);
+        taxDue = taxDue / SCALING_FACTOR;
     }
 
-    function payTax(uint256 tokenId) external payable {
+    function payTax(uint256 tokenId) external payable nonReentrant {
         if (defaultedNFTs[tokenId]) revert TokenDefaulted();
 
-        bool defaulted = evaluateAndAddress(tokenId);
-        if (defaulted) revert TokenDefaulted();
-
+        // require caller is NFT owner
+        if (ownerOf(tokenId) != msg.sender) revert NotOwner();
         uint256 taxDue = returnTaxDue(tokenId);
         if (msg.value < taxDue) revert InsufficientPayment();
 
-        (bool success, ) = payable(treasurer).call{value: taxDue}("");
+        // CEI
+        nftTimestamps[tokenId] = uint64(block.timestamp);
+
+        (bool success,) = payable(treasurer).call{value: taxDue}("");
         require(success, "Tax payment failed");
 
         if (msg.value > taxDue) {
-            (bool success2, ) = payable(msg.sender).call{value: msg.value - taxDue}("");
+            (bool success2,) = payable(msg.sender).call{value: msg.value - taxDue}("");
             require(success2, "Refund failed");
         }
-
-        nftTimestamps[tokenId] = uint64(block.timestamp);
 
         emit TaxPaid(tokenId, msg.sender, taxDue);
     }
@@ -205,4 +202,3 @@ contract HarbergerNFTs is ERC721 {
         return defaultedNFTs[tokenId];
     }
 }
-
