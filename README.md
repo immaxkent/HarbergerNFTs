@@ -43,4 +43,4 @@ To run w/ gas reporting:
 forge test --gas-report
 ```
 
-## Build with love by @immaxkent
+## Built with love by @immaxkent
